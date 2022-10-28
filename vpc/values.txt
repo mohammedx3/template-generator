@@ -1,0 +1,6 @@
+[dev]
+vpc_ip = 10.0.0.0
+net_mask = 24
+dns_support = true
+dns_hostnames = false
+instance_tenancy = default
