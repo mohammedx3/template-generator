@@ -1,10 +1,8 @@
 #!/usr/bin/python3
-from re import template
-import ipaddr
 import sys
 import os
 import argparse
-import configparser
+import yaml
 from troposphere.ec2 import (
     VPC,
     Route,
@@ -19,6 +17,7 @@ from troposphere.ec2 import (
 from troposphere import Ref, Region, Tags, Template, GetAtt, Parameter, Output
 from netaddr import IPNetwork, cidr_merge, cidr_exclude
 
+# Purpose of this class is to divide the given VPC cidr into equal subnets.
 class IPSplitter(object):
     def __init__(self, base_range):
         self.avail_ranges = set((IPNetwork(base_range),))
@@ -38,9 +37,8 @@ class IPSplitter(object):
     def remove_avail_range(self, ip_network):
         self.avail_ranges.remove(ip_network)
 
-
 class Env:
-    def __init__(self, name, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy):
+    def __init__(self, name, availablility_zones, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy):
         self.name = name
         self.region = region
         self.vpc_ip = vpc_ip
@@ -48,41 +46,42 @@ class Env:
         self.dns_support = dns_support
         self.dns_hostnames = dns_hostnames
         self.instance_tenancy = instance_tenancy
+        self.availablility_zones = availablility_zones
 
-    def create_resources(self):
+    def create_template(self):
         t = Template()
         t.set_version("2010-09-09")
         t.set_description("AWS CloudFormation VPC with multi-azs subnets.")
+        s = IPSplitter(f"{self.vpc_ip}/{self.net_mask}")
+        subnets = s.get_subnet(self.net_mask+2, count=3)
         tags=Tags(
                     Environment=self.name,
                     Region=self.region
                 )
-        s = IPSplitter(f"{self.vpc_ip}/{self.net_mask}")
-        subnets = s.get_subnet(self.net_mask+2, count=3)
-        
+
         # Parameters
-        az_a = t.add_parameter(
+        availability_zone_a = t.add_parameter(
             Parameter(
                 "AvailabilityZoneA",
-                Default=f"{self.region}a",
+                Default=self.availablility_zones[0],
                 Description="The AvailabilityZone in which the subnet will be created.",
                 Type="String",
             )
         )
 
-        az_b = t.add_parameter(
+        availability_zone_b = t.add_parameter(
             Parameter(
                 "AvailabilityZoneB",
-                Default=f"{self.region}b",
+                Default=self.availablility_zones[1],
                 Description="The AvailabilityZone in which the subnet will be created.",
                 Type="String",
             )
         )
 
-        az_c = t.add_parameter(
+        availability_zone_c = t.add_parameter(
             Parameter(
                 "AvailabilityZoneC",
-                Default=f"{self.region}c",
+                Default=self.availablility_zones[2],
                 Description="The AvailabilityZone in which the subnet will be created.",
                 Type="String",
             )
@@ -95,7 +94,7 @@ class Env:
                 Description="The IP address space for this VPC, in CIDR notation",
                 Type="String",
             )
-        )
+        )        
 
         private_subnet = t.add_parameter(
             Parameter(
@@ -124,23 +123,22 @@ class Env:
             )
         )
 
-
         # Resources
         vpc = t.add_resource(
-            # VPC("VPC", CidrBlock=f"{self.vpc_ip}/{self.net_mask}", 
-            VPC("VPC", CidrBlock=Ref(vpc_cidr), 
-            EnableDnsSupport=self.dns_support,
-            EnableDnsHostnames=self.dns_hostnames,
-            Tags=tags
-            ),
-
+                 
+            VPC(
+                "VPC", CidrBlock=Ref(vpc_cidr),
+                EnableDnsSupport=self.dns_support,
+                EnableDnsHostnames=self.dns_hostnames,
+                Tags=tags
+            )
         )
 
         private_subnet = t.add_resource(
             Subnet(
                 "PrivateSubnet",
                 CidrBlock=Ref(private_subnet),
-                AvailabilityZone=Ref(az_c),
+                AvailabilityZone=Ref(availability_zone_a),
                 VpcId=Ref(vpc),
                 Tags=tags
             )
@@ -150,7 +148,7 @@ class Env:
             Subnet(
                 "PublicSubnet",
                 CidrBlock=Ref(public_subnet),
-                AvailabilityZone=Ref(az_b),
+                AvailabilityZone=Ref(availability_zone_b),
                 VpcId=Ref(vpc),
                 Tags=tags
             )
@@ -160,7 +158,7 @@ class Env:
             Subnet(
                 "ProtectedSubnet",
                 CidrBlock=Ref(protected_subnet),
-                AvailabilityZone=Ref(az_c),
+                AvailabilityZone=Ref(availability_zone_c),
                 VpcId=Ref(vpc),
                 Tags=tags
             )
@@ -320,11 +318,10 @@ class Env:
                 Value=Ref(internet_gateway),
             )
         )
-
         return t.to_json()
 
     def display(self):
-        return 'Env name: ' + self.name + '\nVPC IP: '+ self.vpc_ip + '\nNet mask: '+ self.net_mask+ '\nDNS support: ' + self.dns_support + '\nDNS hostnames: ' + self.dns_hostnames + '\nInstance tenancy: ' + self.instance_tenancy
+        return 'Env name: ' + self.name + 'Availability zones: ' + self.availablility_zones + '\nVPC IP: '+ self.vpc_ip + '\nNet mask: '+ self.net_mask+ '\nDNS support: ' + self.dns_support + '\nDNS hostnames: ' + self.dns_hostnames + '\nInstance tenancy: ' + self.instance_tenancy
 
 class InvalidTemplate(Exception):
     def __init__(self, reason, message="Template is not valid:"):
@@ -335,26 +332,39 @@ class InvalidTemplate(Exception):
     def __str__(self):
         return f"{self.message} {self.reason}"
 
+def parse_args(args):
+    parser = argparse.ArgumentParser(description='Create AWS Cloudformation template for multi AZs VPC for different environments.')
+    parser.add_argument('--input_path', required=False, default="./values.yaml", type=str, help='Path to input file with environment values, defaults to working directory..')
+    parser.add_argument('--output_path', required=False, default="./", type=str, help='Path to the generated template, defaults to working directory.')
+    return parser.parse_args(args)
+
 def main():
-    if os.path.exists('values.txt') and os.environ["AWS_REGION"]:
-        args = configparser.ConfigParser()
-        args.read(sys.argv[1:])
-        for each_section in args.sections():
-            env = each_section
-            region = os.environ["AWS_REGION"]
-            vpc_ip = args[env]['vpc_ip']
-            net_mask = int(args[env]['net_mask'])
-            dns_support = args[env]['dns_support']
-            dns_hostnames = args[env]['dns_hostnames']
-            instance_tenancy = args[env]['instance_tenancy']
-
-            env=Env(env, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy)
-            # with open(f"{env.name}.json", "a") as f:
-            #     print(env.create_resources(), file=f)
-            print(env.create_resources()) 
-
+    args = parse_args(sys.argv[1:])
+    input_path=args.input_path
+    output_path=args.output_path
+    if os.path.exists(input_path):
+        with open(input_path, 'r') as values:
+            data = yaml.safe_load(values)
+            for key, value in data.items():
+                availablility_zones = []
+                env = key
+                region = data[key]['region']
+                vpc_ip = data[key]['vpcIp']
+                net_mask = int(data[key]['netMask'])
+                dns_support = data[key]['dnsSupport']
+                dns_hostnames = data[key]['dnsHostnames']
+                instance_tenancy = data[key]['instanceTenancy']
+                for i in data[key]['availabilityZones']:
+                    availablility_zones.append(i)
+                env=Env(env, availablility_zones, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy)
+                with open(f"{output_path}/{env.name}.json", "w+") as template_file:
+                    template_file.write(env.create_template())
+                    template_file.seek(0)
+                    template = template_file.read()
+                    print(template)
+    
     else:
-        raise InvalidTemplate(f"You must have a values.txt file with values within it and specifiy AWS_REGION as environment variable to run the script.")
+        raise InvalidTemplate(f"Coud not find the values.yaml file, make sure it exists in the working directory or specify the path with --input_path.")
 
 
 if __name__ == '__main__':

@@ -1,0 +1,35 @@
+dev:
+  region: us-east-1
+  availabilityZones:
+  - us-east-1a
+  - us-east-1b
+  - us-east-1c
+  vpcIp: 10.0.0.0
+  netMask: 24
+  dnsSupport: true
+  dnsHostnames: false
+  instanceTenancy: default
+
+stg:
+  region: us-east-1
+  availabilityZones:
+  - us-east-1d
+  - us-east-1e
+  - us-east-1f
+  vpcIp: 10.1.0.0
+  netMask: 26
+  dnsSupport: true
+  dnsHostnames: true
+  instanceTenancy: default
+
+prod:
+    region: us-east-1
+  availabilityZones:
+  - us-east-1a
+  - us-east-1d
+  - us-east-1e
+  vpcIp: 10.2.0.0
+  netMask: 26
+  dnsSupport: true
+  dnsHostnames: true
+  instanceTenancy: default
