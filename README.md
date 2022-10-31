@@ -1,5 +1,6 @@
-# Cloudformation stack generator using Trophosphere
-[![Github: CI](https://github.com/mohammedx3/troposphere-vpc/blob/main/.github/workflows/build-template-generator.yaml)](https://github.com/mohammedx3/troposphere-vpc/actions)
+# Cloudformation stack template generator using Trophosphere
+![GithubCI](https://github.com/mohammedx3/template-generator/actions/workflows/build-template-generator.yaml/badge.svg
+)
 
 A Trophosphere application based on Python3 to create multiple AWS Cloudformation stacks based on the need.
 
