@@ -1,7 +1,0 @@
-project:
-  name: taskcat-example
-  regions:
-    - us-east-1
-tests:
-  template-test:
-    template: ./dev.json

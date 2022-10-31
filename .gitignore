@@ -6,8 +6,12 @@ lib/.precomp
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
+.pytest_cache
 *.py[cod]
 *$py.class
 
 ### Task Cat ###
 taskcat_outputs
+
+### VS ###
+.vscode/

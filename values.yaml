@@ -17,19 +17,19 @@ stg:
   - us-east-1e
   - us-east-1f
   vpcIp: 10.1.0.0
-  netMask: 26
+  netMask: 18
   dnsSupport: true
   dnsHostnames: true
   instanceTenancy: default
 
 prod:
-    region: us-east-1
+  region: us-east-1
   availabilityZones:
   - us-east-1a
   - us-east-1d
   - us-east-1e
   vpcIp: 10.2.0.0
-  netMask: 26
+  netMask: 18
   dnsSupport: true
   dnsHostnames: true
   instanceTenancy: default
