@@ -36,9 +36,9 @@ jobs:
         python3 -m pip install flake8 pytest
         pip3 install -r requirements.txt
 
-    - name: Lint with flake8
+    - name: Lint with pylint
       run: |
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        pylint *.py
 
     - name: Run template generator
       run: python3 template_generator.py

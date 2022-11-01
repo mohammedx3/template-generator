@@ -120,6 +120,6 @@ docker run -it templategenerator
 
 ## CI
 A github workflow is used to run:
-- `flake8` for linting.
+- `pylint` for linting.
 - Run the template generator with visible output.
 - Run pytest to create the stack in AWS and do the needed checks.
