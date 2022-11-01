@@ -15,3 +15,5 @@ taskcat_outputs
 
 ### VS ###
 .vscode/
+
+dev.json

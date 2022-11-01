@@ -1,0 +1,10 @@
+[MAIN]
+disable=
+    C0114,
+    C0115,
+    C0116,
+    C0330,
+    W0707
+
+[FORMAT]
+max-line-length=100

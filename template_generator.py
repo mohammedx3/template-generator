@@ -1,21 +1,23 @@
 #!/usr/local/bin/python3
-import sys
-import os
 import argparse
+import os
+import sys
+
 import yaml
+from netaddr import IPNetwork, cidr_exclude, cidr_merge
+from troposphere import GetAtt, Output, Parameter, Ref, Tags, Template
 from troposphere.ec2 import (
-    VPC,
-    Route,
     EIP,
+    VPC,
     InternetGateway,
+    NatGateway,
+    Route,
     RouteTable,
     Subnet,
     SubnetRouteTableAssociation,
     VPCGatewayAttachment,
-    NatGateway
 )
-from troposphere import Ref, Tags, Template, GetAtt, Parameter, Output
-from netaddr import IPNetwork, cidr_merge, cidr_exclude
+
 
 class IPSplitter(object):
     def __init__(self, base_range):
@@ -27,7 +29,9 @@ class IPSplitter(object):
             if not subnets:
                 continue
             self.remove_avail_range(ip_network)
-            self.avail_ranges = self.avail_ranges.union(set(cidr_exclude(ip_network, cidr_merge(subnets)[0])))
+            self.avail_ranges = self.avail_ranges.union(
+                set(cidr_exclude(ip_network, cidr_merge(subnets)[0]))
+            )
             return subnets
 
     def get_available_ranges(self):
@@ -38,7 +42,17 @@ class IPSplitter(object):
 
 
 class Env:
-    def __init__(self, name, availablility_zones, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy):
+    def __init__(
+        self,
+        name,
+        availablility_zones,
+        region,
+        vpc_ip,
+        net_mask,
+        dns_support,
+        dns_hostnames,
+        instance_tenancy,
+    ):
         self.name = name
         self.region = region
         self.vpc_ip = vpc_ip
@@ -53,11 +67,8 @@ class Env:
         template.set_version("2010-09-09")
         template.set_description("AWS CloudFormation VPC with multi-azs subnets.")
         subnets = IPSplitter(f"{self.vpc_ip}/{self.net_mask}")
-        subnets = subnets.get_subnet(self.net_mask+2, count=3)
-        tags = Tags(
-                    Environment=self.name,
-                    Region=self.region
-                )
+        subnets = subnets.get_subnet(self.net_mask + 2, count=3)
+        tags = Tags(Environment=self.name, Region=self.region)
 
         # Parameters
         availability_zone_a = template.add_parameter(
@@ -126,10 +137,11 @@ class Env:
         # Resources
         vpc = template.add_resource(
             VPC(
-                "VPC", CidrBlock=Ref(vpc_cidr),
+                "VPC",
+                CidrBlock=Ref(vpc_cidr),
                 EnableDnsSupport=self.dns_support,
                 EnableDnsHostnames=self.dns_hostnames,
-                Tags=tags
+                Tags=tags,
             )
         )
 
@@ -139,7 +151,7 @@ class Env:
                 CidrBlock=Ref(private_subnet),
                 AvailabilityZone=Ref(availability_zone_a),
                 VpcId=Ref(vpc),
-                Tags=tags
+                Tags=tags,
             )
         )
 
@@ -149,7 +161,7 @@ class Env:
                 CidrBlock=Ref(public_subnet),
                 AvailabilityZone=Ref(availability_zone_b),
                 VpcId=Ref(vpc),
-                Tags=tags
+                Tags=tags,
             )
         )
 
@@ -159,18 +171,15 @@ class Env:
                 CidrBlock=Ref(protected_subnet),
                 AvailabilityZone=Ref(availability_zone_c),
                 VpcId=Ref(vpc),
-                Tags=tags
+                Tags=tags,
             )
         )
 
         internet_gateway = template.add_resource(
-            InternetGateway(
-                "InternetGateway",
-                Tags=tags
-            )
+            InternetGateway("InternetGateway", Tags=tags)
         )
 
-        net_gw_vpc_attachment = template.add_resource(
+        template.add_resource(
             VPCGatewayAttachment(
                 "NatAttachment",
                 VpcId=Ref(vpc),
@@ -179,22 +188,14 @@ class Env:
         )
 
         protected_route_table = template.add_resource(
-            RouteTable(
-                "ProtectedRouteTable",
-                VpcId=Ref(vpc),
-                Tags=tags
-            )
+            RouteTable("ProtectedRouteTable", VpcId=Ref(vpc), Tags=tags)
         )
 
         public_route_table = template.add_resource(
-            RouteTable(
-                "PublicRouteTable",
-                VpcId=Ref(vpc),
-                Tags=tags
-            )
+            RouteTable("PublicRouteTable", VpcId=Ref(vpc), Tags=tags)
         )
 
-        public_route_association = template.add_resource(
+        template.add_resource(
             SubnetRouteTableAssociation(
                 "PublicRouteAssociation",
                 SubnetId=Ref(public_subnet),
@@ -202,7 +203,7 @@ class Env:
             )
         )
 
-        default_public_route = template.add_resource(
+        template.add_resource(
             Route(
                 "PublicDefaultRoute",
                 RouteTableId=Ref(public_route_table),
@@ -211,7 +212,7 @@ class Env:
             )
         )
 
-        protected_route_association = template.add_resource(
+        template.add_resource(
             SubnetRouteTableAssociation(
                 "ProtectedRouteAssociation",
                 SubnetId=Ref(protected_subnet),
@@ -219,24 +220,18 @@ class Env:
             )
         )
 
-        nat_eip = template.add_resource(
-            EIP(
-                "NatEip",
-                Domain="vpc",
-                Tags=tags
-            )
-        )
+        nat_eip = template.add_resource(EIP("NatEip", Domain="vpc", Tags=tags))
 
         nat_gateway = template.add_resource(
             NatGateway(
                 "Nat",
                 AllocationId=GetAtt(nat_eip, "AllocationId"),
                 SubnetId=Ref(public_subnet),
-                Tags=tags
+                Tags=tags,
             )
         )
 
-        nat_route = template.add_resource(
+        template.add_resource(
             Route(
                 "NatRoute",
                 RouteTableId=Ref(protected_route_table),
@@ -278,7 +273,7 @@ class Env:
             )
         )
 
-        vpc_id = template.add_output(
+        template.add_output(
             Output(
                 "VPCId",
                 Description="VPCId of the newly created VPC",
@@ -286,7 +281,7 @@ class Env:
             )
         )
 
-        nat = template.add_output(
+        template.add_output(
             Output(
                 "NatGatewayId",
                 Description="Id of the NAT gateway.",
@@ -317,10 +312,26 @@ class Env:
                 Value=Ref(internet_gateway),
             )
         )
+
         return template.to_json()
 
     def display(self):
-        return 'Env name: ' + self.name + 'Availability zones: ' + self.availablility_zones + '\nVPC IP: ' + self.vpc_ip + '\nNet mask: ' + self.net_mask + '\nDNS support: ' + self.dns_support + '\nDNS hostnames: ' + self.dns_hostnames + '\nInstance tenancy: ' + self.instance_tenancy
+        return (
+            "Env name: "
+            + self.name
+            + "Availability zones: "
+            + self.availablility_zones
+            + "\nVPC IP: "
+            + self.vpc_ip
+            + "\nNet mask: "
+            + self.net_mask
+            + "\nDNS support: "
+            + self.dns_support
+            + "\nDNS hostnames: "
+            + self.dns_hostnames
+            + "\nInstance tenancy: "
+            + self.instance_tenancy
+        )
 
 
 class InvalidTemplate(Exception):
@@ -332,10 +343,26 @@ class InvalidTemplate(Exception):
     def __str__(self):
         return f"{self.message} {self.reason}"
 
+
 def parse_args(args):
-    parser = argparse.ArgumentParser(description='Create AWS Cloudformation template for multi AZs VPC for different environments.')
-    parser.add_argument('--input_path', required=False, default="./values.yaml", type=str, help='Path to input file with environment values, defaults to working directory..')
-    parser.add_argument('--output_path', required=False, default="./", type=str, help='Path to the generated template, defaults to working directory.')
+    parser = argparse.ArgumentParser(
+        description="Create AWS Cloudformation template "
+        + "for multi AZs VPC for different environments."
+    )
+    parser.add_argument(
+        "--input_path",
+        required=False,
+        default="./values.yaml",
+        type=str,
+        help="Path to input file with environment values, defaults to working directory..",
+    )
+    parser.add_argument(
+        "--output_path",
+        required=False,
+        default="./",
+        type=str,
+        help="Path to the generated template, defaults to working directory.",
+    )
     return parser.parse_args(args)
 
 
@@ -344,28 +371,42 @@ def main():
     input_path = args.input_path
     output_path = args.output_path
     if os.path.exists(input_path):
-        with open(input_path, 'r') as values:
+        with open(input_path, "r", encoding="UTF-8") as values:
             data = yaml.safe_load(values)
-            for key, value in data.items():
+            for key, _ in data.items():
                 availablility_zones = []
                 env = key
-                region = data[key]['region']
-                vpc_ip = data[key]['vpcIp']
-                net_mask = int(data[key]['netMask'])
-                dns_support = data[key]['dnsSupport']
-                dns_hostnames = data[key]['dnsHostnames']
-                instance_tenancy = data[key]['instanceTenancy']
-                for i in data[key]['availabilityZones']:
+                region = data[key]["region"]
+                vpc_ip = data[key]["vpcIp"]
+                net_mask = int(data[key]["netMask"])
+                dns_support = data[key]["dnsSupport"]
+                dns_hostnames = data[key]["dnsHostnames"]
+                instance_tenancy = data[key]["instanceTenancy"]
+                for i in data[key]["availabilityZones"]:
                     availablility_zones.append(i)
-                env = Env(env, availablility_zones, region, vpc_ip, net_mask, dns_support, dns_hostnames, instance_tenancy)
-                with open(f"{output_path}/{env.name}.json", "w+") as template_file:
+                env = Env(
+                    env,
+                    availablility_zones,
+                    region,
+                    vpc_ip,
+                    net_mask,
+                    dns_support,
+                    dns_hostnames,
+                    instance_tenancy,
+                )
+                with open(
+                    f"{output_path}/{env.name}.json", "w+", encoding="UTF-8"
+                ) as template_file:
                     template_file.write(env.create_template())
                     template_file.seek(0)
                     template = template_file.read()
                     print(template)
     else:
-        raise InvalidTemplate("Coud not find the values.yaml file, make sure it exists in the working directory or specify the path with --input_path.")
+        raise InvalidTemplate(
+            "Coud not find the values.yaml file, make sure it exists "
+            + "in the working directory or specify the path with --input_path."
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

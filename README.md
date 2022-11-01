@@ -2,7 +2,7 @@
 ![GithubCI](https://github.com/mohammedx3/template-generator/actions/workflows/build-template-generator.yaml/badge.svg
 )
 
-A Trophosphere application based on Python3 to create multiple AWS Cloudformation stacks based on the need.
+A Trophosphere application based on Python3 to create multiple AWS Cloudformation stacks each will include a VPC and 3 subnets with equal number of hosts, one is completely private without any access to the internet, one is public with open access to the internet and a protected one which can access the internet via a NAT gateway.
 
 ## Usage
 - Install requirements.
